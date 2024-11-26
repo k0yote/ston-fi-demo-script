@@ -1,7 +1,9 @@
 import { NetworkProvider, UIProvider } from '@ton/blueprint';
 import { promptAddress, promptAmount, waitForTransaction } from '../wrappers/ui-utils';
-import { Address, toNano, TonClient4 } from '@ton/ton';
+import { toNano, TonClient4 } from '@ton/ton';
 import { DEX, pTON } from '@ston-fi/sdk';
+import { InternalWallet } from './internalWallet';
+import TonWeb from 'tonweb';
 
 const depositJettonToJettonAction = async (provider: NetworkProvider, ui: UIProvider) => {
     const sender = provider.sender();
@@ -59,29 +61,45 @@ const depositPTONToJettonAction = async (provider: NetworkProvider, ui: UIProvid
 
     const routerAddress = await promptAddress('Please enter STONFI router address:', ui);
 
-    const router = provider.open(new DEX.v1.Router(routerAddress));
+    const dex = provider.open(new DEX.v1.Router(routerAddress));
     const jetttonAddress = await promptAddress('Please enter Jetton address:', ui);
     const pTONAmount = await promptAmount('Please provide pTON amount to send:', ui);
     const jettonAmount = await promptAmount('Please provide Jetton 0 amount to send:', ui);
 
-    ui.write(`TON/Jetton pool deposit pTON address: ${new pTON.v1().address}\n`);
-    await router.sendProvideLiquidityTon(sender, {
+    const pTONTxParams = await dex.getProvideLiquidityTonTxParams({
         userWalletAddress: sender.address!,
         proxyTon: new pTON.v1(),
         sendAmount: toNano(pTONAmount),
         otherTokenAddress: jetttonAddress,
         minLpOut: '1',
+        forwardGasAmount: toNano('0.05'),
         queryId: 0n,
     });
 
+    const { keyPair, wallet } = await InternalWallet();
+    ui.write(`TON/Jetton pool deposit pTON address: ${new pTON.v1().address}\n`);
+    const toAddress = new TonWeb.utils.Address(pTONTxParams.to.toString()).toString(true, true, false);
+    await wallet.methods
+        .transfer({
+            secretKey: keyPair.secretKey,
+            toAddress: toAddress,
+            amount: pTONTxParams.value.toString(),
+            seqno: (await wallet.methods.seqno().call()) ?? 0,
+            payload: TonWeb.boc.Cell.oneFromBoc(
+                TonWeb.utils.base64ToBytes(pTONTxParams.body!.toBoc().toString('base64')),
+            ),
+            sendMode: 3,
+        })
+        .send();
+
     const client: TonClient4 = provider.api() as TonClient4;
     let lastBlock = await client.getLastBlock();
-    let accountInfo = await client.getAccount(lastBlock.last.seqno, router.address);
+    let accountInfo = await client.getAccount(lastBlock.last.seqno, sender.address!);
     if (accountInfo.account.last === null) throw "Last transaction can't be null on deployed contract";
-    await waitForTransaction(provider, router.address, accountInfo.account.last.lt, 100);
+    await waitForTransaction(provider, sender.address!, accountInfo.account.last.lt, 100);
 
     ui.write(`TON/Jetton pool deposit Jetton address: ${jetttonAddress}\n`);
-    await router.sendProvideLiquidityJetton(sender, {
+    await dex.sendProvideLiquidityJetton(sender, {
         userWalletAddress: sender.address!,
         sendTokenAddress: jetttonAddress,
         sendAmount: toNano(jettonAmount),
@@ -91,15 +109,15 @@ const depositPTONToJettonAction = async (provider: NetworkProvider, ui: UIProvid
     });
 
     lastBlock = await client.getLastBlock();
-    accountInfo = await client.getAccount(lastBlock.last.seqno, router.address);
+    accountInfo = await client.getAccount(lastBlock.last.seqno, dex.address);
     if (accountInfo.account.last === null) throw "Last transaction can't be null on deployed contract";
-    await waitForTransaction(provider, router.address, accountInfo.account.last.lt, 100);
+    await waitForTransaction(provider, dex.address, accountInfo.account.last.lt, 100);
 };
 
 export async function run(provider: NetworkProvider) {
     const ui = provider.ui();
     let done = false;
-    let actionList: string[] = ['Deposit Jetton to Jetton', 'Deposit pTON to Jetton', 'Quit'];
+    let actionList: string[] = ['Deposit Jetton to Jetton', 'Deposit pTON to Jetton', 'test pTON', 'Quit'];
     do {
         const action = await ui.choose('Pick action:', actionList, (c) => c);
         switch (action) {
