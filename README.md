@@ -36,6 +36,10 @@ This is a sample project with ston.fi by using Blueprint SDK
     WALLET_VERSION=
     ### input toncenter api endpoint
     TON_NODE_URL=
+    ### Input admin address
+    DEX_ADMIN=
+    ### unlock: 0 / lock: 1
+    IS_LOCK=
     ```
 
 ## Build
@@ -53,3 +57,4 @@ This is a sample project with ston.fi by using Blueprint SDK
 5. Swap Jetton to Jetton
 6. Swap Jetton to pTON
 7. Swap pTON to Jetton
+8. Deploy dex-core
