@@ -34,6 +34,8 @@ This is a sample project with ston.fi by using Blueprint SDK
     ### You can see https://testnet.ton.cx/address/{ton wallet address}
     ### Check your wallet `Contract Type`
     WALLET_VERSION=
+    ### input toncenter api endpoint
+    TON_NODE_URL=
     ```
 
 ## Build
